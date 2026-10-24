@@ -8,7 +8,8 @@
   },
   "files": [
     "index.js",
-    "ocr.scpt",
+    "ocr.swift",
+    "vision_ocr.js",
     "detect_lines.js",
     "ascii.js"
   ],
