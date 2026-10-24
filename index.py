@@ -101,6 +101,7 @@ def main():
     else:
         backend = RapidOCRBackend()
     try:
+        signal.signal(signal.SIGTERM, signal.default_int_handler)
         if args.image:
             print(render(args.image, backend, args))
         elif args.stream:
@@ -109,7 +110,6 @@ def main():
                 if image:
                     print(json.dumps({"image": image, "ascii": render(image, backend, args)}), flush=True)
         else:
-            signal.signal(signal.SIGTERM, signal.default_int_handler)
             with tempfile.TemporaryDirectory(prefix="ascii-screenshot-") as directory:
                 image = os.path.join(directory, "screen.png")
                 deadline = time.monotonic()

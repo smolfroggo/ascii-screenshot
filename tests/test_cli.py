@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
@@ -109,6 +110,28 @@ const { createVisionOCR } = require('./vision_ocr');
                                          "not-an-image-ascii-screenshot.png")], cwd=ROOT,
                                         capture_output=True, text=True, timeout=30)
                 self.assertNotEqual(result.returncode, 0)
+
+    def test_python_stream_signals_close_the_worker_and_output_pipe(self):
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            with self.subTest(signal=sig):
+                process = subprocess.Popen(
+                    [sys.executable, "index.py", "--stream", "--fast"], cwd=ROOT,
+                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    text=True, start_new_session=True,
+                )
+                try:
+                    process.stdin.write(str(self.image) + "\n")
+                    process.stdin.flush()
+                    self.assertIn("Vision", json.loads(process.stdout.readline())["ascii"])
+                    process.send_signal(sig)
+                    process.communicate(timeout=30)
+                    self.assertEqual(process.returncode, 0)
+                finally:
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    process.wait(timeout=30)
 
 
 if __name__ == "__main__":
