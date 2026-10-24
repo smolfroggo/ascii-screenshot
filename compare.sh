@@ -31,7 +31,7 @@ fi
 echo "=== Image: ${img:t} (${width}x${height}) ==="
 echo ""
 
-echo "--- JS + Apple Vision (original) ---"
+echo "--- JS + Apple Vision (resident Swift worker) ---"
 node "$DIR/index.js" "$img" --width "$width" --height "$height" 2>&1 || echo "[FAILED]"
 echo ""
 

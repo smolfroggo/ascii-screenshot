@@ -35,8 +35,18 @@ class RenderingTests(unittest.TestCase):
                     "__________\n" + (" " * 10 + "\n") * 6 + "__________", lines, 10, 6,
                 ])
                 rows = result["finalText"].splitlines()
-                self.assertEqual(rows[3], "_____+____")
-                self.assertTrue(all(row[5] in "|+" for row in rows))
+                crossing = "_____|____"
+                self.assertEqual(rows[3], crossing)
+                self.assertTrue(all(row[5] == "|" for row in rows))
+                self.assertEqual(result["linesText"].splitlines()[3], crossing)
+                self.assertNotIn("+", result["linesText"])
+                self.assertNotIn("\u0332", result["linesText"])
+
+    def test_intersection_over_text_keeps_plain_vertical(self):
+        result = self.compare("addLinesToAsciiText", [
+            "____\nText\n____", [line("|", .5, 0, height=1), line("_", 0, 0, width=1)], 4, 1,
+        ])
+        self.assertEqual(result["finalText"], "T\u0332e\u0332|t\u0332")
 
     def test_vertical_boundaries_take_precedence_over_colliding_text(self):
         original = "__________\nABCDEFGHIJ\nABCDEFGHIJ\n__________"
@@ -58,9 +68,9 @@ class RenderingTests(unittest.TestCase):
         result = self.compare("ascii", [text, [glyph, boundary, *frame], None, None, 40, 10])
         rows = result["linesText"].splitlines()
         self.assertTrue(all(row[18] != "|" for row in rows))
-        self.assertEqual(sum(row[12] in "|+" for row in rows), 9)
-        self.assertTrue(all(row[0] in "|+" for row in rows))
-        self.assertTrue(all(ch in "_+" for ch in rows[-1]))
+        self.assertEqual(sum(row[12] == "|" for row in rows), 9)
+        self.assertTrue(all(row[0] == "|" for row in rows))
+        self.assertTrue(all(ch in "_|" for ch in rows[-1]))
 
     def test_cursor_takes_precedence_at_a_boundary_intersection(self):
         result = self.compare("ascii", [[], [line("|", .4, 0, height=1),

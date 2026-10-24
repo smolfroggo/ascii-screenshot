@@ -11,19 +11,17 @@ Core algorithm:
 
 OCR backends:
   - "rapidocr" — RapidOCR (cross-platform, requires rapidocr-onnxruntime)
-  - "apple"    — macOS Vision framework via osascript (macOS only)
+  - "apple"    — macOS Vision framework via PyObjC (macOS only)
 
 Original JS: https://github.com/tetratorus/ascii-screenshot
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import math
 import os
 import re
-import subprocess
 import sys
 from typing import Any, Protocol
 
@@ -141,24 +139,11 @@ class RapidOCRBackend:
 # ---- Apple Vision backend --------------------------------------------------
 
 class AppleVisionBackend:
-    """macOS Vision framework via osascript. Returns normalised bounding boxes natively."""
+    """macOS Vision framework via PyObjC, in the current process."""
 
-    def __init__(self, scpt_path: str | None = None) -> None:
-        self._scpt_path = scpt_path
-
-    def _find_scpt(self) -> str:
-        if self._scpt_path:
-            return self._scpt_path
-        # Look next to this file, then in common locations
-        here = os.path.dirname(os.path.abspath(__file__))
-        candidates = [
-            os.path.join(here, "ocr.scpt"),
-            os.path.join(here, "..", "..", "ocr.scpt"),
-        ]
-        for c in candidates:
-            if os.path.exists(c):
-                return c
-        raise FileNotFoundError("ocr.scpt not found — pass scpt_path to AppleVisionBackend")
+    def __init__(self, fast: bool = False) -> None:
+        self.fast = fast
+        self._request: Any = None
 
     def run(self, image_path: str) -> list[Annotation] | None:
         if sys.platform != "darwin":
@@ -168,28 +153,38 @@ class AppleVisionBackend:
             logger.debug("OCR image not found: %s", image_path)
             return None
         try:
-            scpt = self._find_scpt()
-            proc = subprocess.run(
-                ["osascript", scpt, image_path],
-                capture_output=True, text=True, timeout=30,
-            )
-            if proc.returncode != 0:
-                logger.debug("osascript failed: %s", proc.stderr)
-                return None
-            # JXA console.log writes to stderr, which can also carry system log noise
-            output = proc.stderr or proc.stdout
-            json_line = next(
-                (line for line in reversed(output.splitlines()) if line.startswith("[")),
-                None,
-            )
-            if json_line is None:
-                logger.debug("osascript returned no OCR JSON: %s", output)
-                return None
-            annotations: list[Annotation] = json.loads(json_line)
+            import objc
+            import Vision
+            from Foundation import NSURL
+
+            with objc.autorelease_pool():
+                if self._request is None:
+                    self._request = Vision.VNRecognizeTextRequest.alloc().init()
+                request = self._request
+                request.setRecognitionLevel_(1 if self.fast else 0)
+                request.setRecognitionLanguages_(["en-US"])
+                handler = Vision.VNImageRequestHandler.alloc().initWithURL_options_(
+                    NSURL.fileURLWithPath_(os.path.abspath(image_path)), {}
+                )
+                success, error = handler.performRequests_error_([request], None)
+                if not success:
+                    logger.warning("Apple Vision OCR failed: %s", error)
+                    return None
+                annotations: list[Annotation] = []
+                for observation in request.results():
+                    candidates = observation.topCandidates_(1)
+                    if not candidates:
+                        continue
+                    box = observation.boundingBox()
+                    annotations.append({
+                        "text": candidates[0].string(),
+                        "origin": {"x": box.origin.x, "y": box.origin.y},
+                        "size": {"width": box.size.width, "height": box.size.height},
+                    })
             logger.debug("AppleVision extracted %d fragments from %s", len(annotations), image_path)
             return annotations
         except Exception:
-            logger.debug("AppleVision failed for %s", image_path, exc_info=True)
+            logger.exception("AppleVision failed for %s", image_path)
             return None
 
 
@@ -509,7 +504,7 @@ def add_lines_to_ascii(
                 canvas_height - 1,
             )
             for y in range(start_y, end_y + 1):
-                lines_canvas[y][x] = "+" if lines_canvas[y][x] in ("_", "+") else "|"
+                lines_canvas[y][x] = "|"
 
         elif line["text"] == "_":
             y = min(math.floor(line["origin"]["y"] * canvas_height), canvas_height - 1)
@@ -519,7 +514,8 @@ def add_lines_to_ascii(
                 canvas_width - 1,
             )
             for x in range(start_x, end_x + 1):
-                lines_canvas[y][x] = "+" if lines_canvas[y][x] in ("|", "+") else "_"
+                if lines_canvas[y][x] != "|":
+                    lines_canvas[y][x] = "_"
 
     lines_text = "\n".join("".join(row) for row in lines_canvas)
 
@@ -536,7 +532,7 @@ def add_lines_to_ascii(
             lc = lines_canvas[row_idx][col_idx] if row_idx < len(lines_canvas) and col_idx < len(lines_canvas[row_idx]) else " "
             if ch == "\U0001F446":
                 new_row_chars.append(ch)
-            elif ch == " " or lc in ("|", "+"):
+            elif ch == " " or lc == "|":
                 new_row_chars.append(lc)
             elif lc == "_":
                 new_row_chars.append(ch + "\u0332")  # combining underline

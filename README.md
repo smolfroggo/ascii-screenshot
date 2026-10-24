@@ -22,17 +22,49 @@ Run the tool from the command line, specifying the path to your image:
 ascii-screenshot path/to/img
 ```
 
+On macOS, the Node CLI calls Vision through a small Swift worker. It compiles
+once on first use using Xcode Command Line Tools (`swiftc`) and caches the
+binary in `~/Library/Caches/ascii-screenshot`. Subsequent screenshots in a
+running process reuse the same worker. Accurate OCR is the default; `--fast`
+uses less CPU but misses more small text.
+
+Continuous modes refresh the native OCR worker after 512 completed frames to
+bound the native RSS growth observed on this VM. Every image is still processed;
+refreshes happen between frames, not instead of processing them. Python uses
+an isolated PyObjC worker in continuous modes, and in-process PyObjC for a single
+image. Startup cost is amortized over each 512-frame batch.
+
+To process **every full-screen capture**, including unchanged screens, in a
+single process (Ctrl-C to stop):
+
+```bash
+ascii-screenshot --capture-every 1 --fast
+```
+
+`--capture-every 1` attempts one capture per second. If processing takes longer
+than a second, it captures the next frame immediately after finishing the
+previous one; it never discards a captured frame. Each result is one JSON line
+with `capturedAt` and `ascii`. Grant your terminal Screen Recording permission
+in macOS settings if prompted. To supply screenshots yourself instead, use
+`--stream`: send one image path per line on stdin and receive JSON lines with
+`image` and `ascii`. Each path is processed even when repeated.
+
 ## Requirements
-- **macOS only**: This tool uses `osascript` for some functionalities.
+- **Node CLI**: macOS with Xcode Command Line Tools (`xcode-select --install`).
 - Ensure your image resolution is close to **1600x1000** for best results.
 
 ## Python port (cross-platform)
-`index.py` mirrors the CLI using RapidOCR by default, so it runs off macOS too. Requires Python 3.9+.
+`index.py` mirrors the CLI: direct PyObjC Vision by default on macOS,
+RapidOCR by default elsewhere. Requires Python 3.9+.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python index.py path/to/img [--width 160] [--height 60] [--px 0.5 --py 0.5] [--ocr rapidocr|apple]
 ```
+
+Python also accepts `--fast`, `--stream`, and `--capture-every 1` on macOS.
+Accurate Vision at 1 Hz is CPU-intensive; fast mode is an explicit quality
+tradeoff. CPU time alone does not establish physical Mac battery usage.
 
 `./compare.sh path/to/img` runs the JS, Python + RapidOCR and Python + Apple Vision pipelines side by side (uses `python3` on `PATH`).
 
@@ -50,8 +82,11 @@ segments. Lossless screenshots work best; JPEG compression affects flat-colour
 filtering.
 
 Rendering suppresses segments contained in OCR text boxes (usually glyph stems
-or underlines). Crossings use `+` so both directions remain visible. Vertical
-boundaries take precedence over colliding characters on the coarse ASCII grid;
+or underlines). Junctions keep a plain `|`, with the horizontal underline stopping
+at that cell: neither `+` nor a combining underline on `|` reliably aligns with
+the low horizontal rule in native fonts. This is a text approximation, not a
+perfectly joined box. Vertical boundaries take precedence over colliding
+characters on the coarse ASCII grid;
 horizontal rules underline text. Use a wider canvas for dense tables to reduce
 text collisions. The renderer's `originalText` field retains text before the
 boundary overlay.
@@ -134,7 +169,7 @@ ________________________________________________________________________________
 |      ____________________________________________________________________________________________________________                                            |
 |      |                                                                                                          |                                            |
 |      |                                                                                                          |  Packages                                  |
-|      |    ocr.scpt                               turn into a single cli                             3 weeks ago |                                            |
+|      |    ocr.swift                              turn into a single cli                             3 weeks ago |                                            |
 |      ____________________________________________________________________________________________________________                                            |
 |      |                                                                                                          |                                            |
 |      |                                                                                                          | No packages published                      |
