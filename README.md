@@ -147,3 +147,7 @@ ________________________________________________________________________________
 ```
 
 **Note**: This project is experimental and may not work optimally for all image sizes or types. Feedback and contributions are welcome!
+
+## iOS
+
+See [ios/README.md](ios/README.md): a Swift port of this pipeline and an iOS 27 app that captures the screen at 1 frame/sec with ScreenCaptureKit and OCRs it on-device.

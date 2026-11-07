@@ -1,0 +1,70 @@
+name: ScreenOCR
+options:
+  bundleIdPrefix: com.smolfroggo
+  deploymentTarget:
+    iOS: "17.0"
+packages:
+  AsciiScreenshotKit:
+    path: ../AsciiScreenshotKit
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+targets:
+  ScreenOCR:
+    type: application
+    platform: iOS
+    sources: [App]
+    dependencies:
+      - package: AsciiScreenshotKit
+      - target: ScreenOCRBroadcast
+    entitlements:
+      path: App/ScreenOCR.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.smolfroggo.screenocr]
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: ScreenOCR
+        UILaunchScreen: {}
+        UIRequiresFullScreen: true
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.smolfroggo.screenocr
+  ScreenOCRBroadcast:
+    type: app-extension
+    platform: iOS
+    sources: [BroadcastExtension, App/Shared]
+    dependencies:
+      - package: AsciiScreenshotKit
+      - sdk: ReplayKit.framework
+    entitlements:
+      path: BroadcastExtension/ScreenOCRBroadcast.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.smolfroggo.screenocr]
+    info:
+      path: BroadcastExtension/Info.plist
+      properties:
+        CFBundleDisplayName: ScreenOCR
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.broadcast-services-upload
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).SampleHandler
+          RPBroadcastProcessMode: RPBroadcastProcessModeSampleBuffer
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.smolfroggo.screenocr.broadcast
+schemes:
+  ScreenOCR:
+    build:
+      targets:
+        ScreenOCR: all
+        ScreenOCRBroadcast: all
+    run:
+      # Debug Swift is ~50x slower in LineDetector, too slow for 1 fps.
+      config: Release
+    archive:
+      config: Release
